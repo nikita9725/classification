@@ -38,6 +38,36 @@ LINEAR_SVC = "linear_svc"
 MODEL_PRIORITY = (BASELINE, TUNED_TFIDF, BALANCED_LOGREG, LINEAR_SVC)
 
 
+def build_day4_winner_pipeline(random_state: int = 42) -> Pipeline:
+    """Build the fixed pipeline selected by the Day 4 CV experiments.
+
+    Day 5 uses this factory to retrain the already selected configuration from
+    scratch.  It deliberately does not repeat model selection on the test set.
+    """
+    return Pipeline(
+        [
+            (
+                "tfidf",
+                TfidfVectorizer(
+                    max_features=5000,
+                    min_df=2,
+                    ngram_range=(1, 1),
+                    sublinear_tf=True,
+                ),
+            ),
+            (
+                "clf",
+                LinearSVC(
+                    C=0.5,
+                    class_weight="balanced",
+                    max_iter=5000,
+                    random_state=random_state,
+                ),
+            ),
+        ]
+    )
+
+
 @dataclass(frozen=True)
 class ExperimentGrids:
     """Search spaces used by the three Day 4 hypotheses.

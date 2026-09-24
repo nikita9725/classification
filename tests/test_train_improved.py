@@ -10,10 +10,23 @@ from finnews_sentiment.models.train_improved import (
     LINEAR_SVC,
     TUNED_TFIDF,
     ExperimentGrids,
+    build_day4_winner_pipeline,
     run_improvement_experiments,
     save_improvement_artifacts,
     select_winner,
 )
+
+
+def test_day4_winner_factory_uses_selected_parameters() -> None:
+    pipeline = build_day4_winner_pipeline()
+
+    assert pipeline.named_steps["tfidf"].max_features == 5000
+    assert pipeline.named_steps["tfidf"].min_df == 2
+    assert pipeline.named_steps["tfidf"].ngram_range == (1, 1)
+    assert pipeline.named_steps["tfidf"].sublinear_tf is True
+    assert pipeline.named_steps["clf"].C == 0.5
+    assert pipeline.named_steps["clf"].class_weight == "balanced"
+    assert pipeline.named_steps["clf"].random_state == 42
 
 
 def make_training_data() -> pd.DataFrame:
