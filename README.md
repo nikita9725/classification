@@ -1,4 +1,44 @@
-<b>Финансовые новости — анализ тональности для трейдеров</b>
+# Financial news sentiment classification
+
+Учебный ML-проект классификации финансовых фраз по трём классам тональности:
+`negative`, `neutral`, `positive`.
+
+## День 1: данные и EDA
+
+Проект использует
+[Financial PhraseBank](https://huggingface.co/datasets/takala/financial_phrasebank),
+конфигурацию `sentences_75agree`. Данные загружаются с Hugging Face и сохраняются
+локально в единой схеме `text, sentiment`.
+
+```bash
+uv sync
+uv run jupyter lab
+```
+
+Откройте и последовательно выполните `notebooks/01_data_eda.ipynb`. При выполнении
+создаются:
+
+- `data/raw/financial_phrasebank_75agree.csv` — локальную копию исходных примеров;
+- `reports/day01/class_distribution.png` — распределение классов;
+- `reports/day01/text_length_distribution.png` — распределение длин текстов.
+
+Ноутбук можно воспроизводимо выполнить без открытия интерфейса:
+
+```bash
+uv run jupyter nbconvert \
+  --execute \
+  --to notebook \
+  --inplace notebooks/01_data_eda.ipynb
+```
+
+Данные распространяются на условиях
+[CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/).
+CSV исключён из Git и воспроизводится выполнением ноутбука. Сам ноутбук хранится
+выполненным, поэтому таблицы, графики и выводы видны прямо в репозитории.
+
+---
+
+<b>Исходное учебное задание</b>
 
 <b>НЕОБХОДИМО ДЛЯ НАЧАЛА РАБОТЫ:</b>
 

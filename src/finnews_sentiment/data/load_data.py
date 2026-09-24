@@ -1,64 +1,71 @@
-import argparse
+"""Download and validate the raw Financial PhraseBank dataset."""
+
 from pathlib import Path
-from typing import Optional
+from zipfile import ZipFile
 
 import pandas as pd
+from huggingface_hub import hf_hub_download
 
 
-def load_raw_news(path: Path) -> pd.DataFrame:
-    """Загрузка сырых данных с новостями из CSV.
-
-    Ожидается как минимум наличие колонок:
-    - id (опционально)
-    - headline
-    - text
-    - subject
-    - provider
-    - tickers (опционально)
-    - published_at (опционально)
-    - sentiment (если уже размечено)
-    """
-    df = pd.read_csv(path)
-    return df
+DATASET_NAME = "takala/financial_phrasebank"
+DATA_REPOSITORY = "financial_phrasebank"
+ARCHIVE_PATH = "data/FinancialPhraseBank-v1.0.zip"
+DEFAULT_CONFIG = "sentences_75agree"
+EXPECTED_SENTIMENTS = ("negative", "neutral", "positive")
+CONFIG_FILES = {
+    "sentences_50agree": "Sentences_50Agree.txt",
+    "sentences_66agree": "Sentences_66Agree.txt",
+    "sentences_75agree": "Sentences_75Agree.txt",
+    "sentences_allagree": "Sentences_AllAgree.txt",
+}
 
 
-def basic_cleaning(df: pd.DataFrame) -> pd.DataFrame:
-    """Минимальная очистка данных.
+def validate_dataset(df: pd.DataFrame) -> None:
+    """Validate the stable schema used by the rest of the project."""
+    required = {"text", "sentiment"}
+    missing = required.difference(df.columns)
+    if missing:
+        raise ValueError("Dataset is missing required columns: " + ", ".join(sorted(missing)))
+    if df.empty:
+        raise ValueError("Dataset is empty")
 
-    Здесь можно:
-    - убрать полностью пустые строки
-    - удалить дубликаты
-    - привести названия колонок к единому виду
-    """
-    df = df.copy()
-    df.columns = [c.strip().lower() for c in df.columns]
-    df = df.drop_duplicates()
-    df = df.dropna(subset=["headline", "text"])
-    return df
+    actual = set(df["sentiment"].dropna().astype(str).unique())
+    unknown = actual.difference(EXPECTED_SENTIMENTS)
+    if unknown:
+        raise ValueError("Dataset contains unknown sentiments: " + ", ".join(sorted(unknown)))
+    missing_classes = set(EXPECTED_SENTIMENTS).difference(actual)
+    if missing_classes:
+        raise ValueError(
+            "Dataset does not contain all expected sentiments: "
+            + ", ".join(sorted(missing_classes))
+        )
+
+
+def load_financial_phrasebank(dataset_config: str = DEFAULT_CONFIG) -> pd.DataFrame:
+    """Download one Financial PhraseBank configuration from Hugging Face."""
+    if dataset_config not in CONFIG_FILES:
+        supported = ", ".join(sorted(CONFIG_FILES))
+        raise ValueError(f"Unsupported dataset config '{dataset_config}'. Choose one of: {supported}")
+
+    archive_path = hf_hub_download(
+        repo_id=DATA_REPOSITORY,
+        repo_type="dataset",
+        filename=ARCHIVE_PATH,
+    )
+    member = f"FinancialPhraseBank-v1.0/{CONFIG_FILES[dataset_config]}"
+    with ZipFile(archive_path) as archive, archive.open(member) as source_file:
+        lines = (line.decode("iso-8859-1") for line in source_file)
+        rows = [line.rstrip("\r\n").rsplit("@", 1) for line in lines]
+
+    malformed = [row for row in rows if len(row) != 2]
+    if malformed:
+        raise ValueError(f"Source dataset contains {len(malformed)} malformed rows")
+    result = pd.DataFrame(rows, columns=["text", "sentiment"], dtype="string")
+    validate_dataset(result)
+    return result
 
 
 def save_processed(df: pd.DataFrame, path: Path) -> None:
+    """Save a DataFrame as UTF-8 CSV, creating parent directories."""
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
-
-
-def main(input_path: str, output_path: str, sample: Optional[int] = None) -> None:
-    input_p = Path(input_path)
-    output_p = Path(output_path)
-
-    df = load_raw_news(input_p)
-    if sample is not None and sample > 0:
-        df = df.sample(n=sample, random_state=42)
-    df = basic_cleaning(df)
-    save_processed(df, output_p)
-    print(f"Сохранён обработанный датасет: {output_p} (shape={df.shape})")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Базовая загрузка и очистка новостей.")
-    parser.add_argument("--input", type=str, required=True, help="Путь к исходному CSV с новостями.")
-    parser.add_argument("--output", type=str, required=True, help="Путь для сохранения очищенного CSV.")
-    parser.add_argument("--sample", type=int, default=None, help="Опционально: взять случайный сэмпл N строк.")
-    args = parser.parse_args()
-
-    main(args.input, args.output, sample=args.sample)

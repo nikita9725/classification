@@ -25,3 +25,6 @@ dist/
 # Coverage
 .coverage
 htmlcov/
+
+# Downloaded datasets (recreated by the Day 1 command)
+data/
