@@ -1,82 +1,99 @@
-from typing import List
+"""Reusable text preprocessing for the sentiment-classification pipeline."""
+
+import html
+import re
+import unicodedata
 
 import pandas as pd
-import re
-import string
-
-import nltk
-
-# Убедитесь, что необходимые ресурсы NLTK скачаны:
-# nltk.download("punkt")
-# nltk.download("wordnet")
-# nltk.download("stopwords")
-
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
 
 
-STOPWORDS = set(stopwords.words("english"))
-LEMMATIZER = WordNetLemmatizer()
+EXPECTED_SENTIMENTS = ("negative", "neutral", "positive")
+LABEL_MAPPING = {"negative": 0, "neutral": 1, "positive": 2}
+
+HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+WHITESPACE_PATTERN = re.compile(r"\s+")
 
 
-TICKER_PATTERN = re.compile(r"\b[A-Z]{2,6}\b")  # грубое приближение тикеров
+def clean_text(text: str | None) -> str:
+    """Return a conservative, deterministic normalization of one text value.
 
-
-def preprocess_text(text: str) -> str:
-    """Базовая предобработка текста новости.
-
-    Шаги:
-    - приведение к нижнему регистру
-    - удаление HTML-тегов (грубое)
-    - замена тикеров специальным токеном
-    - удаление спецсимволов и цифр
-    - токенизация и лемматизация
-    - удаление стоп-слов
+    Financial tokens such as numbers, currency symbols, percent signs, and
+    punctuation are intentionally preserved for downstream vectorization.
     """
     if not isinstance(text, str):
         return ""
 
-    txt = text.lower()
-
-    # простое удаление HTML тегов
-    txt = re.sub(r"<.*?>", " ", txt)
-
-    # замена тикеров
-    txt = TICKER_PATTERN.sub(" <TICKER> ", txt)
-
-    # удаление цифр и пунктуации
-    txt = txt.translate(str.maketrans("", "", string.digits))
-    txt = txt.translate(str.maketrans("", "", string.punctuation))
-
-    tokens = nltk.word_tokenize(txt)
-    tokens = [LEMMATIZER.lemmatize(t) for t in tokens if t not in STOPWORDS and len(t) > 2]
-
-    return " ".join(tokens)
+    text = html.unescape(text)
+    text = HTML_TAG_PATTERN.sub(" ", text)
+    text = unicodedata.normalize("NFKC", text).lower()
+    return WHITESPACE_PATTERN.sub(" ", text).strip()
 
 
 def clean_news_data(df: pd.DataFrame, text_col: str = "text") -> pd.DataFrame:
-    """Применяет preprocess_text ко всему DataFrame.
+    """Return a copy of ``df`` with the normalized ``text_clean`` column."""
+    if text_col not in df.columns:
+        raise ValueError(f"Dataset is missing required column: {text_col}")
 
-    Создаёт новую колонку `text_clean`.
-    """
-    df = df.copy()
-    df["text_clean"] = df[text_col].astype(str).map(preprocess_text)
-    return df
+    result = df.copy()
+    result["text_clean"] = result[text_col].map(clean_text)
+    return result
 
 
 def add_basic_features(df: pd.DataFrame, text_col: str = "text_clean") -> pd.DataFrame:
-    """Добавляет простые числовые признаки на основе текста.
+    """Add simple, interpretable features calculated from normalized text."""
+    if text_col not in df.columns:
+        raise ValueError(f"Dataset is missing required column: {text_col}")
 
-    Примеры:
-    - длина текста в словах
-    - количество тикеров
-    - количество чисел в исходном тексте
+    result = df.copy()
+    text = result[text_col].fillna("").astype(str)
+    result["word_count_clean"] = text.str.split().str.len()
+    result["char_count"] = text.str.len()
+    result["dollar_count"] = text.str.count(r"\$")
+    return result
+
+
+def prepare_news_data(
+    df: pd.DataFrame,
+    text_col: str = "text",
+    target_col: str = "sentiment",
+) -> pd.DataFrame:
+    """Validate, clean, de-duplicate, and enrich a labelled news dataset.
+
+    Rows with missing or empty text are removed. Labels are normalized and
+    encoded with :data:`LABEL_MAPPING`. Unknown or missing labels, and
+    conflicting labels for the same normalized text, are treated as data
+    quality errors rather than silently discarded.
     """
-    df = df.copy()
-    df["text_len_words"] = df[text_col].astype(str).str.split().apply(len)
-    df["ticker_count"] = df["text"].astype(str).apply(lambda s: len(TICKER_PATTERN.findall(s)))
+    required = {text_col, target_col}
+    missing = required.difference(df.columns)
+    if missing:
+        columns = ", ".join(sorted(missing))
+        raise ValueError(f"Dataset is missing required columns: {columns}")
 
-    # количество чисел в исходном тексте
-    df["number_count"] = df["text"].astype(str).str.findall(r"\d+(?:\.\d+)?").apply(len)
+    result = clean_news_data(df, text_col=text_col)
+    result[target_col] = result[target_col].astype("string").str.strip().str.lower()
 
-    return df
+    missing_labels = result[target_col].isna() | result[target_col].eq("")
+    if missing_labels.any():
+        raise ValueError(
+            f"Dataset contains {int(missing_labels.sum())} missing sentiment label(s)"
+        )
+
+    unknown = sorted(set(result.loc[~missing_labels, target_col]) - set(EXPECTED_SENTIMENTS))
+    if unknown:
+        raise ValueError("Dataset contains unknown sentiments: " + ", ".join(unknown))
+
+    result = result.loc[result["text_clean"].ne("")].copy()
+
+    label_counts = result.groupby("text_clean", sort=False)[target_col].nunique()
+    conflicting_texts = label_counts[label_counts > 1].index
+    if len(conflicting_texts):
+        raise ValueError(
+            "Dataset contains conflicting sentiments for "
+            f"{len(conflicting_texts)} normalized text(s)"
+        )
+
+    result = result.drop_duplicates(subset=["text_clean", target_col], keep="first")
+    result["label"] = result[target_col].map(LABEL_MAPPING).astype("int64")
+    result = add_basic_features(result, text_col="text_clean")
+    return result.reset_index(drop=True)
