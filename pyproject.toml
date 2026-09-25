@@ -36,3 +36,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/finnews_sentiment"]
+
+[tool.pytest.ini_options]
+markers = [
+    "regression: offline end-to-end and published-artifact regression checks",
+]
