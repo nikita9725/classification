@@ -1,0 +1,5 @@
+id,source,text,text_clean,pred_sentiment,score_negative,score_neutral,score_positive,decision_margin
+101,wire,The company reported strong profit growth and improved its outlook.,the company reported strong profit growth and improved its outlook.,positive,-1.3794830080925036,-0.9678499038587938,1.1870360575538066,2.1548859614126004
+102,exchange,The board will meet on Tuesday to review the quarterly report.,the board will meet on tuesday to review the quarterly report.,neutral,-1.0465999647065514,0.47379992538451754,-0.5486860400985818,1.0224859654830993
+103,wire,Operating loss increased and the company issued a profit warning.,operating loss increased and the company issued a profit warning.,negative,0.2969926298568095,-1.1634192112877257,-0.38291275005996883,0.6799053799167784
+104,wire,"Sales rose, but operating profit declined from the previous quarter.","sales rose, but operating profit declined from the previous quarter.",positive,-0.24012468311796797,-0.7290398852793023,-0.20847561271817905,0.031649070399788926
