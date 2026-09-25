@@ -140,6 +140,60 @@ uv run jupyter nbconvert \
 Выводы test-анализа не используются для повторной настройки модели; новые
 гипотезы должны проверяться на отдельной validation-схеме.
 
+## День 6: inference pipeline и сохранение модели
+
+Ноутбук `notebooks/06_inference_pipeline.ipynb` также выполняется с нуля. Он не
+читает локальные датасеты, отчёты или ранее сохранённую модель: самостоятельно
+загружает Financial PhraseBank, применяет общий preprocessing и обучает
+зафиксированного победителя дня 4 на всех 3448 очищенных примерах. Полный
+pipeline из TF-IDF и LinearSVC сохраняется одним артефактом вместе с metadata.
+
+```bash
+uv sync
+uv run jupyter nbconvert \
+  --execute \
+  --to notebook \
+  --inplace notebooks/06_inference_pipeline.ipynb
+```
+
+После выполнения создаются или обновляются:
+
+- `models/best_model.joblib` — финальный pipeline, обученный на всём датасете;
+- `reports/day06/demo_predictions.csv` — примеры пакетного inference.
+
+Для предсказания одной строки без повторного обучения используйте Python API:
+
+```python
+from finnews_sentiment.models.predict import load_model, predict_texts
+
+model, metadata = load_model("models/best_model.joblib")
+result = predict_texts(model, "The company reported strong profit growth.")
+print(result)
+```
+
+`predict_texts` также принимает список строк. Он возвращает исходный и очищенный
+текст, `pred_sentiment`, decision score каждого класса и `decision_margin`.
+Score и margin помогают находить неоднозначные примеры, но не являются
+вероятностями.
+
+Для CSV нужна обязательная колонка `text`; остальные колонки и порядок строк
+сохраняются:
+
+```python
+from finnews_sentiment.models.predict import predict_for_file
+
+predictions = predict_for_file(
+    "models/best_model.joblib",
+    "new_financial_news.csv",
+    "predictions.csv",
+)
+```
+
+Пустые и нестроковые тексты отклоняются с явной ошибкой. Joblib-артефакты нужно
+загружать только из доверенного источника. Модель предназначена для коротких
+англоязычных финансовых фраз; русский язык и длинные документы находятся вне
+её заявленного домена.
+
 ---
 
 <b>Исходное учебное задание</b>
